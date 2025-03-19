@@ -234,7 +234,7 @@ func setupRoutes() {
 	http.HandleFunc("/view", viewDir)
 	http.HandleFunc("/delete", deleteFile)
 	http.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
+		w.Write([]byte("ok"))
 	})
 }
 
