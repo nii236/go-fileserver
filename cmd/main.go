@@ -100,7 +100,7 @@ type Config struct {
 	PASS        string `env:"PASS"`
 	PORT        string `env:"PORT,default=8080"`
 	TLS         bool   `env:"TLS"`
-	USERNAME    string `env:"USERNAME"`
+	USER        string `env:"USERNAME"`
 	VERBOSE     bool   `env:"VERBOSE"`
 	VERSION     bool   `env:"VERSION"`
 	FILE_PATH   string `env:"FILE_PATH,default=."`
@@ -128,7 +128,7 @@ func main() {
 	PASS = cfg.PASS
 	PORT = cfg.PORT
 	TLS = cfg.TLS
-	USER = cfg.USERNAME
+	USER = cfg.USER
 	VERBOSE = cfg.VERBOSE
 	VERSION = cfg.VERSION
 	FILE_PATH = cfg.FILE_PATH
@@ -156,11 +156,6 @@ func main() {
 	if len(CERT) > 0 && len(KEY) > 0 {
 		cert = CERT
 		key = KEY
-	}
-
-	// User enabled basic auth, get password interactively
-	if len(USER) > 0 {
-		PASS = getPass()
 	}
 
 	// setup our routes
