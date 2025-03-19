@@ -405,6 +405,7 @@ func checkAuthGlobal(w http.ResponseWriter, r *http.Request) bool {
 func checkAuthView(w http.ResponseWriter, r *http.Request) bool {
 	if AUTH_VIEW {
 		user, pass, ok := r.BasicAuth()
+		fmt.Println("user:" + user + " pass:" + pass)
 		if !ok || (user != USER || !checkPass(pass, PASS)) {
 			return false
 		}
@@ -911,8 +912,5 @@ func getPass() string {
 
 // checkPass checks the input password against the one setup on cmd line.
 func checkPass(input, password string) bool {
-	sha := sha512.New()
-	sha.Write([]byte(input))
-	inpass := base64.StdEncoding.EncodeToString(sha.Sum(nil))
-	return inpass == password
+	return input == password
 }
