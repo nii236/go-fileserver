@@ -7,6 +7,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -17,7 +18,6 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -33,6 +33,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sethvargo/go-envconfig"
 )
 
 const Version = "mini server 0.1.7"
@@ -68,71 +70,72 @@ type Context struct {
 
 // global variables for command line arguments
 var (
-	AUTH      bool
-	CERT      string
-	HOST      string
-	KEY       string
-	PASS      string
-	PORT      string
-	TLS       bool
-	USER      string
-	VERBOSE   bool
-	VERSION   bool
-	FILE_PATH string // folder to serve files from
+	AUTH_GLOBAL bool
+	AUTH_DELETE bool
+	AUTH_VIEW   bool
+	AUTH_GET    bool
+	AUTH_UPLOAD bool
+	CERT        string
+	HOST        string
+	KEY         string
+	PASS        string
+	PORT        string
+	TLS         bool
+	USER        string
+	VERBOSE     bool
+	VERSION     bool
+	FILE_PATH   string // folder to serve files from
+
 )
 
-// init is automatically called at start, setup cmd line args
-func init() {
-
-	// host/IP adddress
-	flag.StringVar(&HOST, "ip", "0.0.0.0", "IP address to serve on, defaults to 0.0.0.0")
-	flag.StringVar(&HOST, "i", "0.0.0.0", "IP shortcut")
-
-	// version
-	flag.BoolVar(&VERSION, "version", false, "Print program version")
-	flag.BoolVar(&VERSION, "V", false, "Version shortcut")
-
-	// port
-	flag.StringVar(&PORT, "port", "8080", "Port to listen on, defaults to 8080")
-	flag.StringVar(&PORT, "p", "8080", "Port shortcut")
-
-	// enable TLS
-	flag.BoolVar(&TLS, "tls", false, "Generate and use self-signed TLS cert/key")
-	flag.BoolVar(&TLS, "t", false, "TLS shortcut")
-
-	// Use custom TLS key
-	flag.StringVar(&KEY, "key", "", "Use custom TLS Key, must also provide cert in PEM")
-	flag.StringVar(&KEY, "k", "", "TLS key shortcut")
-
-	// Use custom TLS cert
-	flag.StringVar(&CERT, "cert", "", "Use custom TLS Cert, must also provide key")
-	flag.StringVar(&CERT, "c", "", "TLS cert shortcut")
-
-	// enable simple authentication
-	flag.StringVar(&USER, "user", "", "Enable authentication with this username")
-	flag.StringVar(&USER, "u", "", "Basic auth shortcut")
-
-	// enable verbose mode
-	flag.BoolVar(&VERBOSE, "verbose", false, "Enable verbose output")
-	flag.BoolVar(&VERBOSE, "v", false, "Verbose shortcut")
+type Config struct {
+	AUTH_GLOBAL bool   `env:"AUTH_GLOBAL"`
+	AUTH_DELETE bool   `env:"AUTH_DELETE"`
+	AUTH_VIEW   bool   `env:"AUTH_VIEW"`
+	AUTH_GET    bool   `env:"AUTH_GET"`
+	AUTH_UPLOAD bool   `env:"AUTH_UPLOAD"`
+	CERT        string `env:"CERT"`
+	HOST        string `env:"HOST,default=0.0.0.0"`
+	KEY         string `env:"KEY"`
+	PASS        string `env:"PASS"`
+	PORT        string `env:"PORT,default=8080"`
+	TLS         bool   `env:"TLS"`
+	USERNAME    string `env:"USERNAME"`
+	VERBOSE     bool   `env:"VERBOSE"`
+	VERSION     bool   `env:"VERSION"`
+	FILE_PATH   string `env:"FILE_PATH,default=."`
 }
+
+var cfg *Config
 
 func main() {
 	// setup and parse command line arguments
+	ctx := context.Background()
+	cfg = &Config{}
+	if err := envconfig.Process(ctx, cfg); err != nil {
+		log.Fatal(err)
+	}
 	var cert, key string
-	flag.Usage = printHelp
-	flag.Parse()
 
+	AUTH_GLOBAL = cfg.AUTH_GLOBAL
+	AUTH_DELETE = cfg.AUTH_DELETE
+	AUTH_VIEW = cfg.AUTH_VIEW
+	AUTH_GET = cfg.AUTH_GET
+	AUTH_UPLOAD = cfg.AUTH_UPLOAD
+	CERT = cfg.CERT
+	HOST = cfg.HOST
+	KEY = cfg.KEY
+	PASS = cfg.PASS
+	PORT = cfg.PORT
+	TLS = cfg.TLS
+	USER = cfg.USERNAME
+	VERBOSE = cfg.VERBOSE
+	VERSION = cfg.VERSION
+	FILE_PATH = cfg.FILE_PATH
+	fmt.Printf("%+v\n", cfg)
 	if VERSION {
 		log.Fatalln(Version)
 	}
-
-	// Require folder argument to run
-	if len(flag.Args()) == 0 {
-		printUsage()
-	}
-
-	FILE_PATH = flag.Arg(0)
 
 	// check path is a directory and can be accessed
 	if err := checkDir(FILE_PATH); err != nil {
@@ -157,7 +160,6 @@ func main() {
 
 	// User enabled basic auth, get password interactively
 	if len(USER) > 0 {
-		AUTH = true
 		PASS = getPass()
 	}
 
@@ -171,12 +173,12 @@ func main() {
 		s := setupServerConfig(serving)
 
 		fmt.Println(`If using a self-signed certificate, ignore "unknown certificate" warnings`)
-		fmt.Printf("\nServing on: https://%s\n", formatURL(true, HOST, PORT))
+		fmt.Printf("\nServing %s on: https://%s\n", cfg.FILE_PATH, formatURL(true, HOST, PORT))
 		err := s.ListenAndServeTLS(cert, key)
 		log.Fatal(err)
 
 	} else {
-		fmt.Printf("\nServing on: http://%s\n", formatURL(false, HOST, PORT))
+		fmt.Printf("\nServing %s on: http://%s\n", cfg.FILE_PATH, formatURL(false, HOST, PORT))
 		err := http.ListenAndServe(serving, nil)
 		log.Fatal(err)
 	}
@@ -204,6 +206,11 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "  -v, --verbose             Enable verbose logging mode\n")
 	fmt.Fprintf(os.Stderr, "  -?, --help                Show this help message\n")
 	fmt.Fprintf(os.Stderr, "  -V, --version             Print program version\n")
+	fmt.Fprintf(os.Stderr, " --auth_global              Enable basic auth on all routes\n")
+	fmt.Fprintf(os.Stderr, " --auth_delete              Enable basic auth on delete route\n")
+	fmt.Fprintf(os.Stderr, " --auth_view                Enable basic auth on view route\n")
+	fmt.Fprintf(os.Stderr, " --auth_get                 Enable basic auth on get route\n")
+	fmt.Fprintf(os.Stderr, " --auth_upload              Enable basic auth on upload route\n")
 	fmt.Fprintf(os.Stderr, "\n")
 }
 
@@ -226,6 +233,9 @@ func setupRoutes() {
 	http.HandleFunc("/upload", uploadFiles)
 	http.HandleFunc("/view", viewDir)
 	http.HandleFunc("/delete", deleteFile)
+	http.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
 }
 
 // setupServerConfig creates an http.Server configuration for the given host
@@ -383,19 +393,58 @@ func fileFunc(path string) (Files, error) {
 /* Server helper functions and handlers */
 
 /*
-checkAuth is a helper function that check's a user's credential when
+checkAuthGlobal is a helper function that check's a user's credential when
 basic auth is enabled. Returns true if user successfully authenticated or
 if basic auth is disabled, return false otherwise.
 */
-func checkAuth(w http.ResponseWriter, r *http.Request) bool {
-	if AUTH {
+func checkAuthGlobal(w http.ResponseWriter, r *http.Request) bool {
+	if AUTH_GLOBAL {
 		user, pass, ok := r.BasicAuth()
 		if !ok || (user != USER || !checkPass(pass, PASS)) {
 			return false
 		}
 	}
 	return true
+}
 
+func checkAuthView(w http.ResponseWriter, r *http.Request) bool {
+	if AUTH_VIEW {
+		user, pass, ok := r.BasicAuth()
+		if !ok || (user != USER || !checkPass(pass, PASS)) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkAuthDelete(w http.ResponseWriter, r *http.Request) bool {
+	if AUTH_DELETE {
+		user, pass, ok := r.BasicAuth()
+		if !ok || (user != USER || !checkPass(pass, PASS)) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkAuthUpload(w http.ResponseWriter, r *http.Request) bool {
+	if AUTH_UPLOAD {
+		user, pass, ok := r.BasicAuth()
+		if !ok || (user != USER || !checkPass(pass, PASS)) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkAuthGet(w http.ResponseWriter, r *http.Request) bool {
+	if AUTH_GET {
+		user, pass, ok := r.BasicAuth()
+		if !ok || (user != USER || !checkPass(pass, PASS)) {
+			return false
+		}
+	}
+	return true
 }
 
 /*
@@ -416,7 +465,12 @@ func redirectRoot(w http.ResponseWriter, r *http.Request) {
 // getFile serves a single file requested via URL
 func getFile(w http.ResponseWriter, r *http.Request) {
 	// if basic auth, must be logged in to download
-	if !checkAuth(w, r) {
+	if !checkAuthGlobal(w, r) {
+		authFail(w, r)
+		return
+	}
+
+	if !checkAuthGet(w, r) {
 		authFail(w, r)
 		return
 	}
@@ -460,7 +514,7 @@ the directory.
 func viewDir(w http.ResponseWriter, r *http.Request) {
 	// the HTML template to display files
 	htmltemp := `<!DOCTYPE html>
-	<html lang="en" dir="ltr">
+	<html lang="en" dir="ltr" data-theme="milligram">
 		<head>
 			<meta charset="utf-8">
 			<meta name="viewport"
@@ -479,6 +533,8 @@ func viewDir(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			</style>
+			<link rel="stylesheet" href="https://classless.de/classless.css">
+			<link rel="stylesheet" href="https://classless.de/addons/themes.css">
 		</head>
 		<body>
 		<h2>{{.Title}}</h2>
@@ -553,7 +609,12 @@ func viewDir(w http.ResponseWriter, r *http.Request) {
 	</html>`
 
 	// check basic auth if enabled
-	if !checkAuth(w, r) {
+	if !checkAuthGlobal(w, r) {
+		authFail(w, r)
+		return
+	}
+
+	if !checkAuthView(w, r) {
 		authFail(w, r)
 		return
 	}
@@ -619,7 +680,11 @@ func uploadFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check basic auth if enabled
-	if !checkAuth(w, r) {
+	if !checkAuthGlobal(w, r) {
+		authFail(w, r)
+		return
+	}
+	if !checkAuthUpload(w, r) {
 		authFail(w, r)
 		return
 	}
@@ -676,7 +741,12 @@ func deleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check basic auth if enabled
-	if !checkAuth(w, r) {
+	if !checkAuthGlobal(w, r) {
+		authFail(w, r)
+		return
+	}
+
+	if !checkAuthDelete(w, r) {
 		authFail(w, r)
 		return
 	}
